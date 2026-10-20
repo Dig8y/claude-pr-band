@@ -70,12 +70,20 @@ const fetchChecks = async ($: EngineInterface, repo: string, sha: string) => {
   return countChecks([first, ...rest].flatMap(p => p.check_runs))
 }
 
-const refresh = async ($: EngineInterface) => {
-  const branch = (await run($, GIT, ['branch', '--show-current'])).stdout.trim()
-  const repo = repoFromRemote((await run($, GIT, ['remote', 'get-url', 'origin'])).stdout)
+const git = async ($: EngineInterface, args: string[]) => {
+  const { exitCode, stdout, stderr } = await run($, GIT, args)
+  if (exitCode !== 0) throw new Error(`my-prs: git ${args.join(' ')} failed: ${stderr.trim().slice(0, 80)}`)
+  return stdout
+}
+
+// Returns what it found, for /prs refresh to report.
+const refresh = async ($: EngineInterface): Promise<string> => {
+  const branch = (await git($, ['branch', '--show-current'])).trim()
+  const remote = (await git($, ['remote', 'get-url', 'origin'])).trim()
+  const repo = repoFromRemote(remote)
   if (!branch || !repo) {
     await update($, prs, () => [])
-    return
+    return branch ? `origin ${remote} is not a GitHub repo.` : 'no branch checked out (detached HEAD).'
   }
   const owner = repo.split('/')[0]!
   const pulls: RestPull[] = JSON.parse(await ghApi($, [pullsPath(repo, owner, branch)]))
@@ -95,6 +103,7 @@ const refresh = async ($: EngineInterface) => {
     pr.review = reviewDecision(JSON.parse(reviews))
   }
   await update($, prs, () => list)
+  return pr ? `${repo} ${branch}: #${pr.number} (${pr.state.toLowerCase()}).` : `${repo} ${branch}: no PR.`
 }
 
 const refreshInBackground = ($: EngineInterface) => {
@@ -120,8 +129,11 @@ export const register: Register = (on, options) => {
 
   on('command.run', { command: 'prs' }, async ($, e) => {
     if (e.args.trim() === 'refresh') {
-      await refresh($)
-      return { text: 'PR band refreshed.' }
+      try {
+        return { text: `my-prs: ${await refresh($)}` }
+      } catch (err) {
+        return { text: String(err) }
+      }
     }
     const hidden = await update($, isHidden, h => !h)
     return { text: hidden ? 'PR band hidden.' : 'PR band shown.' }

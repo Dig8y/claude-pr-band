@@ -30,7 +30,7 @@ test('band draws the live PR on desktop and terminal', { options: { previewUrl: 
     const { Text } = $.ui.resolve(e)
     return <Text>engine band</Text>
   })
-  await $.command.run({ command: 'prs', args: 'refresh' })
+  expect(await $.command.run({ command: 'prs', args: 'refresh' })).toEqual({ text: 'my-prs: o/r feature: #7 (draft).' })
 
   for (const surface of ['desktop', 'terminal'] as const) {
     const ui = await $.ui.mount({ plugin: 'my-prs', surface, component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false } as never })
@@ -45,4 +45,14 @@ test('band draws the live PR on desktop and terminal', { options: { previewUrl: 
     await ui.unmount()
     await $.command.run({ command: 'prs', args: '' })
   }
+})
+
+test('refresh reports a failing git call instead of showing no PR', async ($, on) => {
+  on('process.run', (_$, e) => ({
+    value: e.argv.includes('--show-current')
+      ? { exitCode: 128, stdout: '', stderr: 'fatal: not a git repository', isStdoutTruncated: false, isStderrTruncated: false }
+      : { exitCode: 0, stdout: reply(e.argv), stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
+  }))
+  expect(await $.command.run({ command: 'prs', args: 'refresh' }))
+    .toEqual({ text: 'Error: my-prs: git branch --show-current failed: fatal: not a git repository' })
 })
