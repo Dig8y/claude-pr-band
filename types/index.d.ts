@@ -7,6 +7,7 @@ export type Pr = {
   state: 'OPEN' | 'DRAFT' | 'MERGED' | 'CLOSED'
   review: string
   checks: Checks
+  hasConflicts: boolean
 }
 
 declare module 'claude-code' {

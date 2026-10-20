@@ -1,1 +1,20 @@
-{ "name": "my-prs", "version": "0.2.0", "description": "Shows the current branch's PR, its CI and review status in a band above the prompt", "types": "./types/index.d.ts" }
+{
+  "name": "my-prs",
+  "version": "0.3.0",
+  "description": "Shows the current branch's PR, its CI and review status in a band above the prompt",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "previewUrl": {
+      "type": "string",
+      "title": "Preview URL",
+      "description": "Template for a PR's preview deploy; {number} becomes the PR number, e.g. https://pr-{number}.preview.example.com. Empty: no preview link.",
+      "default": ""
+    },
+    "previewRepo": {
+      "type": "string",
+      "title": "Preview repo",
+      "description": "owner/repo whose PRs get the preview link. Empty: every repo.",
+      "default": ""
+    }
+  }
+}

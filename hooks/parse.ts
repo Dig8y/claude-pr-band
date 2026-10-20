@@ -1,49 +1,93 @@
 import type { Checks, Pr } from '../types'
 
-type Check = { status?: string; conclusion?: string; state?: string | null }
-type ListRow = {
-  number: number
-  title: string
-  url: string
-  isDraft: boolean
-  state: 'OPEN' | 'MERGED' | 'CLOSED'
-  reviewDecision: string
-  statusCheckRollup: Check[] | null
-}
-
 // Shell commands that change which branch is checked out, or what its PR looks like.
 const CHANGES_PR = /\bgit\s+(checkout|switch|push)\b|\bgh\s+pr\s+(create|ready|merge|close|reopen)\b/
 
 export const changesPr = (command: string) => CHANGES_PR.test(command)
 
-export const PR_FIELDS = 'number,title,url,isDraft,state,reviewDecision,statusCheckRollup'
+// Everything goes through GitHub's REST API (`gh api`): cloud sessions block GraphQL, which
+// `gh pr list --json` and `gh pr view` use.
 
-const FAILED = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR'])
-
-// CheckRun reports status + conclusion; StatusContext reports state alone.
-const outcome = (c: Check): keyof Checks => {
-  const result = c.conclusion || c.state || ''
-  if (FAILED.has(result)) return 'failed'
-  if ((c.status && c.status !== 'COMPLETED') || result === 'PENDING' || result === 'EXPECTED' || result === '') return 'pending'
-  return 'passed'
+// `owner/repo` from an origin URL: git@github.com:o/r.git, https://github.com/o/r, or a
+// proxy URL whose path ends in /o/r.
+export const repoFromRemote = (remote: string): string | undefined => {
+  const m = remote.trim().match(/[/:]([^/:]+)\/([^/]+?)(?:\.git)?\/?$/)
+  return m ? `${m[1]}/${m[2]}` : undefined
 }
 
-const REVIEW: Record<string, string> = {
-  APPROVED: 'approved',
-  CHANGES_REQUESTED: 'changes requested',
-  REVIEW_REQUIRED: 'review required',
+export type RestPull = {
+  number: number
+  title: string
+  html_url: string
+  state: 'open' | 'closed'
+  draft: boolean
+  merged_at: string | null
+  head: { sha: string }
 }
 
-export const parsePrs = (stdout: string): Pr[] =>
-  (JSON.parse(stdout) as ListRow[]).map(r => {
-    const checks: Checks = { passed: 0, failed: 0, pending: 0 }
-    for (const c of r.statusCheckRollup ?? []) checks[outcome(c)] += 1
-    return {
-      number: r.number,
-      title: r.title,
-      url: r.url,
-      state: r.state === 'OPEN' && r.isDraft ? 'DRAFT' : r.state,
-      review: REVIEW[r.reviewDecision] ?? '',
-      checks,
-    }
-  })
+export const pullsPath = (repo: string, owner: string, branch: string) =>
+  `repos/${repo}/pulls?head=${encodeURIComponent(`${owner}:${branch}`)}&state=all&per_page=10`
+
+const EMPTY_CHECKS: Checks = { passed: 0, failed: 0, pending: 0 }
+
+export const toPr = (p: RestPull): Pr => ({
+  number: p.number,
+  title: p.title,
+  url: p.html_url,
+  state: p.merged_at ? 'MERGED' : p.state === 'closed' ? 'CLOSED' : p.draft ? 'DRAFT' : 'OPEN',
+  review: '',
+  checks: { ...EMPTY_CHECKS },
+  hasConflicts: false,
+})
+
+const FAILED = new Set(['failure', 'timed_out', 'action_required', 'startup_failure'])
+// Runs that neither passed nor failed: skipped by a condition, informational, or cancelled
+// (usually superseded by a newer run). Left out of every count.
+const UNCOUNTED = new Set(['skipped', 'neutral', 'cancelled', 'stale'])
+
+// One `{status, conclusion}` JSON object per line, as `gh api --paginate --jq` prints check runs.
+export const countChecks = (lines: string): Checks => {
+  const checks: Checks = { ...EMPTY_CHECKS }
+  for (const line of lines.split('\n')) {
+    if (!line.trim()) continue
+    const c = JSON.parse(line) as { status: string; conclusion: string | null }
+    if (c.status !== 'completed') checks.pending += 1
+    else if (UNCOUNTED.has(c.conclusion ?? '')) continue
+    else if (FAILED.has(c.conclusion ?? '')) checks.failed += 1
+    else checks.passed += 1
+  }
+  return checks
+}
+
+// REST has no reviewDecision: take each reviewer's latest verdict (a dismissal clears it,
+// a plain comment doesn't change it). Required-review rules aren't visible here, so "no
+// verdict yet" reads as awaiting review.
+export const reviewDecision = (reviews: { user: string; state: string }[]): string => {
+  const latest = new Map<string, string>()
+  for (const r of reviews) {
+    if (r.state === 'APPROVED' || r.state === 'CHANGES_REQUESTED') latest.set(r.user, r.state)
+    else if (r.state === 'DISMISSED') latest.delete(r.user)
+  }
+  const verdicts = [...latest.values()]
+  if (verdicts.includes('CHANGES_REQUESTED')) return 'changes requested'
+  if (verdicts.includes('APPROVED')) return 'approved'
+  return 'awaiting review'
+}
+
+// A branch can carry several PRs (one closed, a newer one open): prefer one that can still
+// change, newest first as gh lists them, else the newest.
+export const pickPr = (list: Pr[]): Pr[] => {
+  const live = list.find(pr => pr.state === 'OPEN' || pr.state === 'DRAFT')
+  const pick = live ?? list[0]
+  return pick ? [pick] : []
+}
+
+export type PreviewConfig = { url: string; repo: string }
+
+// The template comes from the person's settings: {number} is the PR number, and `repo`
+// (owner/repo) limits it to one repository's PRs.
+export const previewFor = (config: PreviewConfig, prUrl: string, number: number): string | undefined => {
+  if (!config.url) return undefined
+  if (config.repo && !prUrl.startsWith(`https://github.com/${config.repo}/pull/`)) return undefined
+  return config.url.replaceAll('{number}', String(number))
+}

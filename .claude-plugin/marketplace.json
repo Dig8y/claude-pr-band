@@ -1,5 +1,12 @@
 {
   "name": "claude-pr-band",
-  "owner": { "name": "Dig8y" },
-  "plugins": [{ "name": "my-prs", "source": "./" }]
+  "owner": {
+    "name": "build-technologies"
+  },
+  "plugins": [
+    {
+      "name": "my-prs",
+      "source": "./"
+    }
+  ]
 }
