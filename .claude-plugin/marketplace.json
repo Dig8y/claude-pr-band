@@ -1,0 +1,5 @@
+{
+  "name": "claude-pr-band",
+  "owner": { "name": "Dig8y" },
+  "plugins": [{ "name": "my-prs", "source": "./" }]
+}
