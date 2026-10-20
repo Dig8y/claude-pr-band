@@ -2,8 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Checks, Pr } from '../types'
-import { changesPr, countChecks, pickPr, previewFor, pullsPath, reviewDecision, repoFromRemote, toPr } from './parse'
-import type { RestPull } from './parse'
+import { CHECKS_PER_PAGE, changesPr, checkRunsPath, countChecks, pickPr, previewFor, pullsPath, reviewDecision, repoFromRemote, toPr } from './parse'
+import type { CheckRunsPage, RestPull } from './parse'
 
 const prs = atom({ plugin: 'my-prs', key: 'prs' } as const, null)
 const isHidden = atom({ plugin: 'my-prs', key: 'isHidden' } as const, false)
@@ -61,6 +61,15 @@ const ghApi = async ($: EngineInterface, args: string[]) => {
   return stdout
 }
 
+const fetchChecks = async ($: EngineInterface, repo: string, sha: string) => {
+  const page = async (n: number): Promise<CheckRunsPage> =>
+    JSON.parse(await ghApi($, [checkRunsPath(repo, sha, n), '--jq', '{total_count, check_runs: [.check_runs[] | {status, conclusion}]}']))
+  const first = await page(1)
+  const pageCount = Math.ceil(first.total_count / CHECKS_PER_PAGE)
+  const rest = await Promise.all(Array.from({ length: Math.max(0, pageCount - 1) }, (_, i) => page(i + 2)))
+  return countChecks([first, ...rest].flatMap(p => p.check_runs))
+}
+
 const refresh = async ($: EngineInterface) => {
   const branch = (await run($, GIT, ['branch', '--show-current'])).stdout.trim()
   const repo = repoFromRemote((await run($, GIT, ['remote', 'get-url', 'origin'])).stdout)
@@ -75,14 +84,14 @@ const refresh = async ($: EngineInterface) => {
   const pr = list[0]
   if (pr && (pr.state === 'OPEN' || pr.state === 'DRAFT')) {
     const sha = byNumber.get(pr.number)!.head.sha
-    const [detail, checkLines, reviews] = await Promise.all([
+    const [detail, checks, reviews] = await Promise.all([
       ghApi($, [`repos/${repo}/pulls/${pr.number}`, '--jq', '{mergeable}']),
-      ghApi($, ['--paginate', `repos/${repo}/commits/${sha}/check-runs?per_page=100`, '--jq', '.check_runs[] | {status, conclusion}']),
+      fetchChecks($, repo, sha),
       ghApi($, [`repos/${repo}/pulls/${pr.number}/reviews?per_page=100`, '--jq', '[.[] | {user: .user.login, state}]']),
     ])
     // mergeable is null while GitHub is still computing it; only a definite false is a conflict.
     pr.hasConflicts = (JSON.parse(detail) as { mergeable: boolean | null }).mergeable === false
-    pr.checks = countChecks(checkLines)
+    pr.checks = checks
     pr.review = reviewDecision(JSON.parse(reviews))
   }
   await update($, prs, () => list)

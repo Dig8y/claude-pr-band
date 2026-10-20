@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { changesPr, countChecks, pickPr, previewFor, pullsPath, repoFromRemote, reviewDecision, toPr } from '../hooks/parse'
+import { changesPr, checkRunsPath, countChecks, pickPr, previewFor, pullsPath, repoFromRemote, reviewDecision, toPr } from '../hooks/parse'
 
 test('refreshes after branch- and PR-changing commands only', () => {
   for (const c of ['git checkout foo', 'git switch -c bar', 'git push -u origin x', 'cd a && gh pr merge 7'])
@@ -30,7 +30,7 @@ test('maps REST state, draft and merge to one state', () => {
 })
 
 test('counts check runs by status and conclusion', () => {
-  const lines = [
+  const runs = [
     { status: 'completed', conclusion: 'success' },
     { status: 'completed', conclusion: 'skipped' },
     { status: 'in_progress', conclusion: null },
@@ -38,9 +38,13 @@ test('counts check runs by status and conclusion', () => {
     { status: 'completed', conclusion: 'failure' },
     { status: 'completed', conclusion: 'cancelled' },
     { status: 'completed', conclusion: 'neutral' },
-  ].map(c => JSON.stringify(c)).join('\n') + '\n'
-  expect(countChecks(lines)).toEqual({ passed: 1, failed: 1, pending: 2 })
-  expect(countChecks('')).toEqual({ passed: 0, failed: 0, pending: 0 })
+  ]
+  expect(countChecks(runs)).toEqual({ passed: 1, failed: 1, pending: 2 })
+  expect(countChecks([])).toEqual({ passed: 0, failed: 0, pending: 0 })
+})
+
+test('addresses every check-runs page by owner/repo, never by numeric repository id', () => {
+  expect(checkRunsPath('o/r', 'abc', 2)).toBe('repos/o/r/commits/abc/check-runs?per_page=100&page=2')
 })
 
 test('review decision is each reviewer\'s latest verdict', () => {

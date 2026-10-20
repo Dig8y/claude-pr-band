@@ -45,12 +45,19 @@ const FAILED = new Set(['failure', 'timed_out', 'action_required', 'startup_fail
 // (usually superseded by a newer run). Left out of every count.
 const UNCOUNTED = new Set(['skipped', 'neutral', 'cancelled', 'stale'])
 
-// One `{status, conclusion}` JSON object per line, as `gh api --paginate --jq` prints check runs.
-export const countChecks = (lines: string): Checks => {
+export type CheckRun = { status: string; conclusion: string | null }
+export type CheckRunsPage = { total_count: number; check_runs: CheckRun[] }
+
+export const CHECKS_PER_PAGE = 100
+
+// Each page is addressed by repos/{owner}/{repo}: the `next` link GitHub returns (and
+// `gh api --paginate` follows) uses repositories/{id}/..., which cloud sessions' proxy rejects.
+export const checkRunsPath = (repo: string, sha: string, page: number) =>
+  `repos/${repo}/commits/${sha}/check-runs?per_page=${CHECKS_PER_PAGE}&page=${page}`
+
+export const countChecks = (runs: CheckRun[]): Checks => {
   const checks: Checks = { ...EMPTY_CHECKS }
-  for (const line of lines.split('\n')) {
-    if (!line.trim()) continue
-    const c = JSON.parse(line) as { status: string; conclusion: string | null }
+  for (const c of runs) {
     if (c.status !== 'completed') checks.pending += 1
     else if (UNCOUNTED.has(c.conclusion ?? '')) continue
     else if (FAILED.has(c.conclusion ?? '')) checks.failed += 1

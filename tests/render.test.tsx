@@ -12,7 +12,12 @@ const reply = (argv: readonly string[]) => {
   if (argv.includes('get-url')) return 'git@github.com:o/r.git\n'
   if (path.includes('/pulls?head=o%3Afeature')) return PULLS
   if (path.endsWith('/pulls/7')) return '{"mergeable":false}'
-  if (path.includes('/commits/abc/check-runs')) return '{"status":"completed","conclusion":"failure"}\n'
+  if (argv.includes('--paginate')) throw new Error('--paginate follows repositories/{id} links the cloud proxy rejects')
+  // 101 runs over two pages; the failure is on page 2, so the badge shows only if page 2 is fetched.
+  if (path.endsWith('/commits/abc/check-runs?per_page=100&page=1'))
+    return '{"total_count":101,"check_runs":[{"status":"completed","conclusion":"success"}]}'
+  if (path.endsWith('/commits/abc/check-runs?per_page=100&page=2'))
+    return '{"total_count":101,"check_runs":[{"status":"completed","conclusion":"failure"}]}'
   if (path.endsWith('/pulls/7/reviews?per_page=100')) return '[{"user":"a","state":"CHANGES_REQUESTED"}]'
   throw new Error(`unexpected call: ${argv.join(' ')}`)
 }
