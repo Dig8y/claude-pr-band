@@ -23,7 +23,7 @@ const run = async ($: EngineInterface, bins: string[], args: string[]) => {
       // not found at this path; try the next
     }
   }
-  throw new Error(`my-prs: none of ${bins.join(', ')} could be run`)
+  throw new Error(`none of ${bins.join(', ')} could be run`)
 }
 
 // Colours follow the app's own PR list: open green, draft grey, merged purple, closed red.
@@ -57,7 +57,7 @@ const checksBadge = (c: Checks): { text: string; color: string } | null =>
 
 const ghApi = async ($: EngineInterface, args: string[]) => {
   const { exitCode, stdout, stderr } = await run($, GH, ['api', ...args])
-  if (exitCode !== 0) throw new Error(`my-prs: gh api ${args.at(-1)} failed: ${stderr.trim().slice(0, 80)}`)
+  if (exitCode !== 0) throw new Error(`gh api ${args.at(-1)} failed: ${stderr.trim().slice(0, 80)}`)
   return stdout
 }
 
@@ -72,7 +72,7 @@ const fetchChecks = async ($: EngineInterface, repo: string, sha: string) => {
 
 const git = async ($: EngineInterface, args: string[]) => {
   const { exitCode, stdout, stderr } = await run($, GIT, args)
-  if (exitCode !== 0) throw new Error(`my-prs: git ${args.join(' ')} failed: ${stderr.trim().slice(0, 80)}`)
+  if (exitCode !== 0) throw new Error(`git ${args.join(' ')} failed: ${stderr.trim().slice(0, 80)}`)
   return stdout
 }
 
@@ -107,7 +107,7 @@ const refresh = async ($: EngineInterface): Promise<string> => {
 }
 
 const refreshInBackground = ($: EngineInterface) => {
-  refresh($).catch(err => $.ui.status(String(err)))
+  refresh($).catch(err => $.ui.status(`my-prs: ${err instanceof Error ? err.message : String(err)}`))
 }
 
 export const register: Register = (on, options) => {
@@ -130,9 +130,9 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'prs' }, async ($, e) => {
     if (e.args.trim() === 'refresh') {
       try {
-        return { text: `my-prs: ${await refresh($)}` }
+        return { text: await refresh($) }
       } catch (err) {
-        return { text: String(err) }
+        return { text: err instanceof Error ? err.message : String(err) }
       }
     }
     const hidden = await update($, isHidden, h => !h)
