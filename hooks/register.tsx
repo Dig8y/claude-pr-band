@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Checks } from '../types'
-import { PR_FIELDS, parsePrs } from './parse'
+import { PR_FIELDS, changesPr, parsePrs } from './parse'
 
 const prs = atom({ plugin: 'my-prs', key: 'prs' } as const, null)
 const isHidden = atom({ plugin: 'my-prs', key: 'isHidden' } as const, false)
@@ -26,35 +26,52 @@ const run = async ($: EngineInterface, bins: string[], args: string[]) => {
 const checksText = (c: Checks) =>
   c.failed > 0 ? `✗ ${c.failed} failing` : c.pending > 0 ? `… ${c.pending} running` : c.passed > 0 ? '✓ checks pass' : 'no checks'
 
+const refresh = async ($: EngineInterface) => {
+  const branch = (await run($, GIT, ['branch', '--show-current'])).stdout.trim()
+  if (!branch) {
+    await update($, prs, () => [])
+    return
+  }
+  const { exitCode, stdout, stderr } = await run($, GH, [
+    'pr', 'list', '--head', branch, '--state', 'all', '--limit', '1', '--json', PR_FIELDS,
+  ])
+  if (exitCode !== 0) {
+    $.ui.status(`my-prs: gh failed: ${stderr.trim().slice(0, 80)}`)
+    return
+  }
+  const list = parsePrs(stdout)
+  await update($, prs, () => list)
+}
+
+const refreshInBackground = ($: EngineInterface) => {
+  refresh($).catch(err => $.ui.status(String(err)))
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    const refresh = async () => {
-      const branch = (await run($, GIT, ['branch', '--show-current'])).stdout.trim()
-      if (!branch) {
-        await update($, prs, () => [])
-        return
-      }
-      const { exitCode, stdout, stderr } = await run($, GH, [
-        'pr', 'list', '--head', branch, '--state', 'all', '--limit', '1', '--json', PR_FIELDS,
-      ])
-      if (exitCode !== 0) {
-        $.ui.status(`my-prs: gh failed: ${stderr.trim().slice(0, 80)}`)
-        return
-      }
-      const list = parsePrs(stdout)
-      await update($, prs, () => list)
-    }
-
-    await $.command.register({ name: 'prs', description: "Show or hide this branch's PR above the prompt" })
-    void refresh().catch(err => $.ui.status(String(err)))
-    $.clock.every(POLL_MS, () => void refresh().catch(err => $.ui.status(String(err))))
+    await $.command.register({
+      name: 'prs',
+      description: "Show or hide this branch's PR above the prompt; /prs refresh re-fetches it",
+    })
+    refreshInBackground($)
+    $.clock.every(POLL_MS, () => refreshInBackground($))
 
     return next(e)
   })
 
-  on('command.run', { command: 'prs' }, async $ => {
+  on('command.run', { command: 'prs' }, async ($, e) => {
+    if (e.args.trim() === 'refresh') {
+      await refresh($)
+      return { text: 'PR band refreshed.' }
+    }
     const hidden = await update($, isHidden, h => !h)
     return { text: hidden ? 'PR band hidden.' : 'PR band shown.' }
+  })
+
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const ran = await next(e)
+    if (changesPr(e.command)) refreshInBackground($)
+    return ran
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

@@ -1,1 +1,1 @@
-{ "name": "my-prs", "version": "0.1.0", "description": "Shows the current branch's PR, its CI and review status in a band above the prompt", "types": "./types/index.d.ts" }
+{ "name": "my-prs", "version": "0.2.0", "description": "Shows the current branch's PR, its CI and review status in a band above the prompt", "types": "./types/index.d.ts" }

@@ -11,6 +11,11 @@ type ListRow = {
   statusCheckRollup: Check[] | null
 }
 
+// Shell commands that change which branch is checked out, or what its PR looks like.
+const CHANGES_PR = /\bgit\s+(checkout|switch|push)\b|\bgh\s+pr\s+(create|ready|merge|close|reopen)\b/
+
+export const changesPr = (command: string) => CHANGES_PR.test(command)
+
 export const PR_FIELDS = 'number,title,url,isDraft,state,reviewDecision,statusCheckRollup'
 
 const FAILED = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR'])

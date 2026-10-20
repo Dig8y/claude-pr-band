@@ -1,6 +1,13 @@
 import { expect, test } from 'claude-code/testing'
 
-import { parsePrs } from '../hooks/parse'
+import { changesPr, parsePrs } from '../hooks/parse'
+
+test('refreshes after branch- and PR-changing commands only', () => {
+  for (const c of ['git checkout foo', 'git switch -c bar', 'git push -u origin x', 'cd a && gh pr merge 7'])
+    expect(changesPr(c)).toBe(true)
+  for (const c of ['git status', 'git log', 'gh pr view', 'ls checkout'])
+    expect(changesPr(c)).toBe(false)
+})
 
 test('summarises state, review and checks from gh pr list', () => {
   const out = JSON.stringify([{
