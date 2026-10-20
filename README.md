@@ -24,15 +24,13 @@ Set two options to add a "Preview ↗" link to open PRs. Installing asks for the
 At the prompt of a terminal session:
 
 ```
-/plugin install my-prs --marketplace build-technologies/claude-pr-band
+/plugin install my-prs --marketplace Dig8y/claude-pr-band
 ```
 
 From a shell:
 
 ```
-claude plugin install my-prs --marketplace build-technologies/claude-pr-band
+claude plugin install my-prs --marketplace Dig8y/claude-pr-band
 ```
 
-In the desktop app, where `/plugin` does not run: click + next to the prompt box, then Plugins, Add marketplace with `build-technologies/claude-pr-band`, then Add plugin.
-
-This repository is private: installing needs read access to it on GitHub and a git credential for github.com on your machine (an SSH key, or `gh auth login` then `gh auth setup-git`).
+In the desktop app, where `/plugin` does not run: click + next to the prompt box, then Plugins, Add marketplace with `Dig8y/claude-pr-band`, then Add plugin.
